@@ -1,4 +1,4 @@
-# secure_client_gui.py
+
 
 import socket, pickle, threading
 from tkinter import *
@@ -12,7 +12,7 @@ private_key, public_key = generate_keys()
 class SecureClientGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("🔐 Secure Client Chat")
+        self.root.title(" Secure Client Chat")
 
         self.chat_box = Text(root, height=20, width=60, state=DISABLED, bg="#e8f8f5")
         self.chat_box.pack(padx=10, pady=5)
@@ -30,13 +30,13 @@ class SecureClientGUI:
 
     def start_client(self):
         self.sock.connect((HOST, PORT))
-        self.update_chat("🔗 Connected to server.")
+        self.update_chat(" Connected to server.")
 
         server_public_key = pickle.loads(self.sock.recv(4096))
         self.sock.sendall(pickle.dumps(public_key))
 
         self.shared_key = generate_shared_key(private_key, server_public_key)
-        self.update_chat("🔐 Secure AES channel established.")
+        self.update_chat(" Secure AES channel established.")
 
         while True:
             data = self.sock.recv(4096)
@@ -48,10 +48,13 @@ class SecureClientGUI:
     def send_message(self):
         msg = self.entry.get()
         if msg:
-            encrypted = encrypt_message(self.shared_key, msg)
-            self.sock.sendall(encrypted)
-            self.update_chat(f"You: {msg}")
-            self.entry.delete(0, END)
+           if self.shared_key is None:
+            self.update_chat(" Cannot send message: No shared key established.")
+            return
+        encrypted = encrypt_message(self.shared_key, msg)
+        self.sock.sendall(encrypted)
+        self.update_chat(f"You: {msg}")
+        self.entry.delete(0, END)
 
     def update_chat(self, message):
         self.chat_box.config(state=NORMAL)
