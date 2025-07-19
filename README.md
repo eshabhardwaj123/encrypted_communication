@@ -1,28 +1,31 @@
-# 🔐 Encrypted Chat App (Python GUI)
+# 🔐 Encrypted Chat with Diffie-Hellman Key Exchange
 
-A secure client-server chat application built with Python using:
+This project implements secure communication between two users using:
+- Diffie-Hellman for key exchange
+- AES for encrypted message exchange
 
-- **Diffie-Hellman Key Exchange** for secure key generation
-- **AES Encryption** for end-to-end encrypted messaging
-- **Tkinter GUI** for a simple and interactive user interface
+## ✅ Features
 
----
+- Encrypted messaging using AES-CBC
+- Secure key exchange using Diffie-Hellman
+- Realtime chat via sockets
+- Multi-threaded message sending/receiving
 
-## 📦 Features
+## 📂 Files
 
-✅ End-to-end encryption (AES-256)  
-✅ Real-time secure messaging  
-✅ Key exchange using Diffie-Hellman  
-✅ Easy-to-use GUI built with Tkinter  
-✅ Beginner-friendly Python code structure
+- `server.py` — Acts as User B, accepts connections
+- `client.py` — Acts as User A, connects to server
+- `crypto_utils.py` — Contains key exchange and encryption functions
+- `requirements.txt` — Python dependencies
 
-
----
-
-## 🛠️ Installation
-
-### 1. Clone the Repository
+## 🚀 How to Run
 
 ```bash
-git clone https://github.com/your-username/encrypted-chat-app.git
-cd encrypted-chat-app
+pip install -r requirements.txt
+
+🛠️ Tech Stack
+Python
+
+Sockets
+
+Cryptography (Diffie-Hellman, AES, HKDF)

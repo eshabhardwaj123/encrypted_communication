@@ -1,40 +1,47 @@
 # crypto_utils.py
-
-import os
+from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.primitives.asymmetric import dh
 from cryptography.hazmat.backends import default_backend
-
-# Generate DH parameters
-parameters = dh.generate_parameters(generator=2, key_size=2048, backend=default_backend())
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives import serialization
+import os
 
 def generate_keys():
-    private_key = parameters.generate_private_key()
+    private_key = ec.generate_private_key(ec.SECP384R1(), default_backend())
     public_key = private_key.public_key()
     return private_key, public_key
 
-def generate_shared_key(private_key, peer_public_key):
-    shared_key = private_key.exchange(peer_public_key)
+def serialize_public_key(public_key):
+    return public_key.public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo
+    )
+
+def deserialize_public_key(public_bytes):
+    return serialization.load_pem_public_key(public_bytes, backend=default_backend())
+
+def derive_shared_key(private_key, peer_key):
+    shared_secret = private_key.exchange(ec.ECDH(), peer_key)
     derived_key = HKDF(
         algorithm=hashes.SHA256(),
         length=32,
         salt=None,
         info=b'handshake data',
-    ).derive(shared_key)
-    return derived_key
+        backend=default_backend()
+    ).derive(shared_secret)
+    return derived_key  # 32-byte key for AES-256
 
-def encrypt_message(key, plaintext):
-    iv = os.urandom(16)
-    cipher = Cipher(algorithms.AES(key), modes.CFB(iv))
-    encryptor = cipher.encryptor()
-    ciphertext = encryptor.update(plaintext.encode()) + encryptor.finalize()
-    return iv + ciphertext
+# --- AES-GCM Encryption/Decryption ---
 
-def decrypt_message(key, ciphertext):
-    iv = ciphertext[:16]
-    real_ciphertext = ciphertext[16:]
-    cipher = Cipher(algorithms.AES(key), modes.CFB(iv))
-    decryptor = cipher.decryptor()
-    return (decryptor.update(real_ciphertext) + decryptor.finalize()).decode()
+def encrypt_message_aes(key, plaintext):
+    aesgcm = AESGCM(key)
+    nonce = os.urandom(12)  # 96-bit nonce
+    ciphertext = aesgcm.encrypt(nonce, plaintext.encode(), None)
+    return nonce + ciphertext  # Send both
+
+def decrypt_message_aes(key, encrypted_data):
+    nonce = encrypted_data[:12]
+    ciphertext = encrypted_data[12:]
+    aesgcm = AESGCM(key)
+    return aesgcm.decrypt(nonce, ciphertext, None).decode()

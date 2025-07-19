@@ -1,67 +1,44 @@
+import socket
+import threading
+from crypto_utils import generate_key_pair, derive_shared_key, encrypt_message_aes, decrypt_message_aes, serialize_pub_key, deserialize_pub_key
 
-
-import socket, pickle, threading
-from tkinter import *
-from crypto_utils import generate_keys, generate_shared_key, encrypt_message, decrypt_message
-
-HOST = 'localhost'
+HOST = '127.0.0.1'
 PORT = 65432
 
-private_key, public_key = generate_keys()
+private_key, public_key = generate_key_pair()
 
-class SecureClientGUI:
-    def __init__(self, root):
-        self.root = root
-        self.root.title(" Secure Client Chat")
+client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+client.connect((HOST, PORT))
+print("[CLIENT] Connected to server.")
 
-        self.chat_box = Text(root, height=20, width=60, state=DISABLED, bg="#e8f8f5")
-        self.chat_box.pack(padx=10, pady=5)
+# Exchange public keys
+server_pub_key_bytes = client.recv(1024)
+client.sendall(serialize_pub_key(public_key))
+server_pub_key = deserialize_pub_key(server_pub_key_bytes)
 
-        self.entry = Entry(root, width=40)
-        self.entry.pack(side=LEFT, padx=(10, 0), pady=5)
+# Derive AES key
+shared_key = derive_shared_key(private_key, server_pub_key)
 
-        self.send_btn = Button(root, text="Send", command=self.send_message)
-        self.send_btn.pack(side=LEFT, padx=5)
+def receive_messages():
+    while True:
+        try:
+            nonce = client.recv(12)
+            tag = client.recv(16)
+            ciphertext = client.recv(1024)
+            decrypted = decrypt_message_aes(shared_key, nonce, ciphertext, tag)
+            print(f"[SERVER]: {decrypted}")
+        except Exception as e:
+            print("[ERROR RECEIVING]", e)
+            break
 
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.shared_key = None
+def send_messages():
+    while True:
+        msg = input("[YOU]: ")
+        nonce, ciphertext, tag = encrypt_message_aes(shared_key, msg)
+        client.sendall(nonce)
+        client.sendall(tag)
+        client.sendall(ciphertext)
 
-        threading.Thread(target=self.start_client, daemon=True).start()
-
-    def start_client(self):
-        self.sock.connect((HOST, PORT))
-        self.update_chat(" Connected to server.")
-
-        server_public_key = pickle.loads(self.sock.recv(4096))
-        self.sock.sendall(pickle.dumps(public_key))
-
-        self.shared_key = generate_shared_key(private_key, server_public_key)
-        self.update_chat(" Secure AES channel established.")
-
-        while True:
-            data = self.sock.recv(4096)
-            if not data:
-                break
-            decrypted = decrypt_message(self.shared_key, data)
-            self.update_chat(f"Server: {decrypted}")
-
-    def send_message(self):
-        msg = self.entry.get()
-        if msg:
-           if self.shared_key is None:
-            self.update_chat(" Cannot send message: No shared key established.")
-            return
-        encrypted = encrypt_message(self.shared_key, msg)
-        self.sock.sendall(encrypted)
-        self.update_chat(f"You: {msg}")
-        self.entry.delete(0, END)
-
-    def update_chat(self, message):
-        self.chat_box.config(state=NORMAL)
-        self.chat_box.insert(END, message + "\n")
-        self.chat_box.config(state=DISABLED)
-        self.chat_box.see(END)
-
-root = Tk()
-gui = SecureClientGUI(root)
-root.mainloop()
+recv_thread = threading.Thread(target=receive_messages)
+recv_thread.start()
+send_messages()
