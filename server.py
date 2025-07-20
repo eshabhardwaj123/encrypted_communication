@@ -94,7 +94,7 @@ def handle_client(conn, addr):
 
             # --- Simple Hardcoded Authentication Logic ---
             # In a real application, you would check a database or a secure user store
-            if username == "user" and password == "pass":
+            if username == "esha" and password == "esha123":
                 response = b'AUTH_SUCCESS'
                 authenticated = True
                 print(f"[SERVER] Client {addr} authenticated successfully as {username}.")
