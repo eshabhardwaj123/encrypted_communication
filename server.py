@@ -28,7 +28,8 @@ if not os.path.exists("downloads"):
 def handle_client(conn, addr):
     """
     Handles a single client connection. This function performs key exchange,
-    and then manages both receiving and sending messages/files for this client.
+    authentication, and then manages both receiving and sending messages/files
+    for this client.
     """
     print(f"[SERVER] Connected with {addr}")
 
@@ -65,7 +66,70 @@ def handle_client(conn, addr):
             clients.remove(conn)
         return # Exit the handler if key exchange fails
 
-    # --- Communication Threads for this Client ---
+    # --- Authentication Phase ---
+    authenticated = False
+    try:
+        # The first message after key exchange is expected to be the authentication request
+        raw_length = conn.recv(4)
+        if not raw_length:
+            raise Exception("Client disconnected during authentication handshake.")
+
+        total_expected_bytes = struct.unpack('!I', raw_length)[0]
+        full_data = b""
+        received_bytes = 0
+        while received_bytes < total_expected_bytes:
+            chunk = conn.recv(min(total_expected_bytes - received_bytes, 4096))
+            if not chunk:
+                raise Exception("Incomplete data received during authentication.")
+            full_data += chunk
+            received_bytes += len(chunk)
+
+        decrypted_auth_data = aes_decrypt(shared_key, full_data)
+
+        if decrypted_auth_data.startswith(b'AUTH'):
+            auth_payload = decrypted_auth_data[4:] # Remove 'AUTH' prefix
+            username_bytes, password_bytes = auth_payload.split(b'||', 1)
+            username = username_bytes.decode('utf-8')
+            password = password_bytes.decode('utf-8')
+
+            # --- Simple Hardcoded Authentication Logic ---
+            # In a real application, you would check a database or a secure user store
+            if username == "user" and password == "pass":
+                response = b'AUTH_SUCCESS'
+                authenticated = True
+                print(f"[SERVER] Client {addr} authenticated successfully as {username}.")
+            else:
+                response = b'AUTH_FAILURE'
+                print(f"[SERVER] Client {addr} authentication failed for user: {username}.")
+
+            # Send authentication response back to client
+            encrypted_response = aes_encrypt(shared_key, response)
+            response_length = len(encrypted_response)
+            conn.send(struct.pack('!I', response_length))
+            conn.sendall(encrypted_response)
+
+        else:
+            # Unexpected message type during authentication phase
+            response = b'AUTH_FAILURE_UNEXPECTED_MSG' # Custom failure message
+            encrypted_response = aes_encrypt(shared_key, response)
+            response_length = len(encrypted_response)
+            conn.send(struct.pack('!I', response_length))
+            conn.sendall(encrypted_response)
+            print(f"[SERVER ERROR] Unexpected message from {addr} during authentication: {decrypted_auth_data.decode(errors='ignore')}")
+
+    except Exception as e:
+        print(f"[SERVER ERROR] Authentication process failed with {addr}: {e}")
+        authenticated = False # Ensure authenticated is False on error
+
+    # If authentication failed, close connection and exit handler
+    if not authenticated:
+        conn.close()
+        if conn in clients: clients.remove(conn)
+        if conn in keys: del keys[conn]
+        print(f"[SERVER] Disconnected {addr} due to authentication failure.")
+        return
+
+    # --- Communication Threads for this Client (only start if authenticated) ---
 
     def receive_messages_client():
         """
@@ -104,8 +168,7 @@ def handle_client(conn, addr):
 
                 full_data = b"".join(chunks)
 
-                # Check the first 4 bytes of the decrypted data to determine if it's a file or a message
-                # Note: The prefix check must happen AFTER decryption, as the prefix itself is encrypted.
+                # Decrypt the received full data
                 decrypted_content = aes_decrypt(shared_key, full_data)
 
                 # Check for the 'FILE' prefix in the decrypted content
@@ -213,4 +276,3 @@ except KeyboardInterrupt:
             print(f"[SERVER] Error closing client connection: {se}")
         except Exception as e:
             print(f"[SERVER] Unexpected error during client shutdown: {e}")
-
